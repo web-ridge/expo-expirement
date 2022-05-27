@@ -1,0 +1,185 @@
+diff --git a/node_modules/react-native-navigation/autolink/postlink/activityLinker.js b/node_modules/react-native-navigation/autolink/postlink/activityLinker.js
+index 5c0ef2e..e82694c 100644
+--- a/node_modules/react-native-navigation/autolink/postlink/activityLinker.js
++++ b/node_modules/react-native-navigation/autolink/postlink/activityLinker.js
+@@ -22,6 +22,11 @@ class ActivityLinker {
+     logn('Linking MainActivity...');
+ 
+     var activityContent = fs.readFileSync(this.activityPath, 'utf8');
++    activityContent = linkContent(activityContent);
++    fs.writeFileSync(this.activityPath, activityContent);
++  }
++
++  linkContent() {
+   
+     try {
+       activityContent = this._extendNavigationActivity(activityContent);
+@@ -39,7 +44,6 @@ class ActivityLinker {
+ 
+     activityContent = this._removeCreateReactActivityDelegate(activityContent);
+ 
+-    fs.writeFileSync(this.activityPath, activityContent);
+     if (this.extendNavigationActivitySuccess && this.removeGetMainComponentNameSuccess) {
+       infon('MainActivity linked successfully!\n');
+     } else if (!this.extendNavigationActivitySuccess && !this.removeGetMainComponentNameSuccess) {
+@@ -51,6 +55,7 @@ class ActivityLinker {
+         'MainActivity was only partially linked. Please check the logs above for more information and proceed with manual linking for the failed steps:\nhttps://wix.github.io/react-native-navigation/docs/installing#2-update-mainactivityjava'
+       );
+     }
++    return activityContent
+   }
+ 
+   _removeGetMainComponentName(contents) {
+diff --git a/node_modules/react-native-navigation/autolink/postlink/appDelegateLinker.js b/node_modules/react-native-navigation/autolink/postlink/appDelegateLinker.js
+index d5f265c..bbb31da 100644
+--- a/node_modules/react-native-navigation/autolink/postlink/appDelegateLinker.js
++++ b/node_modules/react-native-navigation/autolink/postlink/appDelegateLinker.js
+@@ -21,6 +21,11 @@ class AppDelegateLinker {
+     logn('Linking AppDelegate...');
+ 
+     var appDelegateContents = fs.readFileSync(this.appDelegatePath, 'utf8');
++    appDelegateContents = linkContent(appDelegateContents);
++    fs.writeFileSync(this.appDelegatePath, appDelegateContents);
++  }
++
++  linkContent() {
+    
+     try {
+       appDelegateContents = this._removeUnneededImports(appDelegateContents);
+@@ -42,8 +47,6 @@ class AppDelegateLinker {
+       errorn('   ' + e.message);
+     }
+ 
+-    fs.writeFileSync(this.appDelegatePath, appDelegateContents);
+-
+     if (this.removeUnneededImportsSuccess && this.removeApplicationLaunchContentSuccess) {
+       infon('AppDelegate linked successfully!\n');
+     } else {
+@@ -51,6 +54,7 @@ class AppDelegateLinker {
+         'AppDelegate was partially linked, please check the details above and proceed with the manual installation documentation to complete the linking process.!\n'
+       );
+     }
++    return appDelegateContents;
+   }
+ 
+   _removeUnneededImports(content) {
+diff --git a/node_modules/react-native-navigation/plugin/jest.config.js b/node_modules/react-native-navigation/plugin/jest.config.js
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/react-native-navigation/plugin/src/__tests___/withRNN-test.ts b/node_modules/react-native-navigation/plugin/src/__tests___/withRNN-test.ts
+new file mode 100644
+index 0000000..c85ac69
+--- /dev/null
++++ b/node_modules/react-native-navigation/plugin/src/__tests___/withRNN-test.ts
+@@ -0,0 +1,38 @@
++import { addCameraImport } from '../withRNN';
++
++const buildGradleFixture = `
++buildscript {
++    ext {
++        buildToolsVersion = "29.0.2"
++        minSdkVersion = 21
++        compileSdkVersion = 29
++        targetSdkVersion = 29
++    }
++    repositories {
++        google()
++        jcenter()
++    }
++    dependencies {
++        classpath("com.android.tools.build:gradle:3.5.3")
++    }
++}
++allprojects {
++    repositories {
++        mavenLocal()
++        maven {
++            url("$rootDir/../node_modules/react-native/android")
++        }
++        maven {
++            url("$rootDir/../node_modules/jsc-android/dist")
++        }
++        google()
++        jcenter()
++        maven { url 'https://www.jitpack.io' }
++    }
++}
++`;
++describe(addCameraImport, () => {
++  it(`modifies the build.gradle`, () => {
++    expect(addCameraImport(buildGradleFixture).contents).toMatchSnapshot();
++  });
++});
+\ No newline at end of file
+diff --git a/node_modules/react-native-navigation/plugin/src/withRNN.ts b/node_modules/react-native-navigation/plugin/src/withRNN.ts
+new file mode 100644
+index 0000000..3373ade
+--- /dev/null
++++ b/node_modules/react-native-navigation/plugin/src/withRNN.ts
+@@ -0,0 +1,62 @@
++import {
++AndroidConfig,
++withProjectBuildGradle,
++ConfigPlugin,
++createRunOncePlugin,
++withInfoPlist,
++withMainActivity,
++withAppDelegate
++} from '@expo/config-plugins';
++import {
++createGeneratedHeaderComment,
++MergeResults,
++removeGeneratedContents,
++} from '@expo/config-plugins/build/utils/generateCode';
++
++import {ActivityLinker} from "../../autolink/postlink/activityLinker"
++import {AppDelegateLinker} from "../../autolink/postlink/appDelegateLinker"
++
++
++const withActivityLinker: ConfigPlugin = (config) => {
++    return withMainActivity(config, (config) => {
++    const l = new ActivityLinker()
++    return l.linkContent(config.modResults.contents)
++})
++};
++
++const withAppDelegateLinker: ConfigPlugin = (config) => {
++return withAppDelegate(config, (config) => {
++    const l = new AppDelegateLinker()
++    return l.linkContent(config.modResults.contents)
++})
++};
++
++
++const pkg = require('react-native-navigation/package.json');
++
++
++const withRNN: ConfigPlugin<
++{
++    cameraPermission?: string;
++    microphonePermission?: string;
++}
++> = (config, { cameraPermission, microphonePermission } = {} ) => {
++
++// TODO: android
++// new ApplicationLinker().link();
++// new ActivityLinker().link();
++config = withActivityLinker(config);
++// new GradleLinker().link();
++
++// TODO: ios
++// new AppDelegateLinker().link();
++config = withAppDelegateLinker(config);
++// new PodfileLinker().link();
++// new PlistLinker().link();
++
++
++
++return config;
++};
++
++export default createRunOncePlugin(withRNN, pkg.name, pkg.version);
+\ No newline at end of file
+diff --git a/node_modules/react-native-navigation/plugin/tsconfig.json b/node_modules/react-native-navigation/plugin/tsconfig.json
+new file mode 100644
+index 0000000..e69de29
